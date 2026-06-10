@@ -177,10 +177,13 @@ const handleRegistration = async (req, res, levels, level) => {
 
       const tempPassword = Math.random().toString(36).slice(-8).toUpperCase() + '1!';
 
+      const phoneRaw = (req.body.phoneNumber || '').replace(/[^0-9]/g, '');
+      const savedPhone = '0' + phoneRaw.slice(-9);
+
       const newUser = await User.create({
         fullName: name,
         email,
-        phoneNumber: req.body.phoneNumber?.replace(/[^0-9]/g, ''),
+        phoneNumber: savedPhone,
         password: tempPassword,
         role: 'business_owner',
         language: 'en',
@@ -212,12 +215,22 @@ exports.handleUssd = async (req, res) => {
   try {
     const { phoneNumber, text, sessionId, serviceCode } = req.body;
 
-    const phone = phoneNumber?.replace(/[^0-9]/g, '');
+    let phone = phoneNumber?.replace(/[^0-9]/g, '');
     if (!phone) {
       return respond(res, 'END Invalid phone number.');
     }
 
-    const user = await User.findOne({ phoneNumber: { $regex: phone + '$' } });
+    // Normalize phone: try matching with/without country code +250, with/without leading 0
+    const last9 = phone.slice(-9);
+    const patterns = [
+      last9,                              // 788000001
+      '0' + last9,                        // 0788000001
+      '250' + last9,                      // 250788000001
+      '+' + '250' + last9,                // +250788000001
+    ];
+    const user = await User.findOne({
+      phoneNumber: { $in: patterns },
+    });
 
     if (!user) {
       const input = (text || '').trim();
