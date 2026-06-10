@@ -80,19 +80,23 @@ const formatDate = (d) => {
   return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
 };
 
+const respond = (res, message) => {
+  res.type('text/plain').send(message);
+};
+
 exports.handleUssd = async (req, res) => {
   try {
     const { phoneNumber, text, sessionId, serviceCode } = req.body;
 
     const phone = phoneNumber?.replace(/[^0-9]/g, '');
     if (!phone) {
-      return res.json({ response: 'END Invalid phone number.' });
+      return respond(res, 'END Invalid phone number.');
     }
 
     const user = await User.findOne({ phoneNumber: { $regex: phone + '$' } });
 
     if (!user) {
-      return res.json({ response: `END ${t('en', 'notRegistered')}` });
+      return respond(res, `END ${t('en', 'notRegistered')}`);
     }
 
     const lang = detectLang(user);
@@ -101,9 +105,7 @@ exports.handleUssd = async (req, res) => {
     const currentLevel = levels.length;
 
     if (currentLevel === 0) {
-      return res.json({
-        response: `CON ${t(lang, 'welcome')}\n${t(lang, 'mainMenu')}`,
-      });
+      return respond(res, `CON ${t(lang, 'welcome')}\n${t(lang, 'mainMenu')}`);
     }
 
     const lastInput = levels[levels.length - 1];
@@ -113,61 +115,57 @@ exports.handleUssd = async (req, res) => {
         switch (lastInput) {
           case '1': {
             const bid = user.activeBusinessId || user.businessId;
-            if (!bid) return res.json({ response: `END ${t(lang, 'noBusiness')}` });
+            if (!bid) return respond(res, `END ${t(lang, 'noBusiness')}`);
 
             const pending = await TaxTransaction.aggregate([
               { $match: { businessId: bid, status: 'pending' } },
               { $group: { _id: null, total: { $sum: '$amount' }, dueDate: { $max: '$dueDate' } } },
             ]);
 
-            if (!pending.length) return res.json({ response: `END ${t(lang, 'noTaxDue')}` });
+            if (!pending.length) return respond(res, `END ${t(lang, 'noTaxDue')}`);
 
-            return res.json({
-              response: `END ${t(lang, 'taxBalance', {
-                amount: formatRwf(pending[0].total),
-                dueDate: formatDate(pending[0].dueDate),
-              })}`,
-            });
+            return respond(res, `END ${t(lang, 'taxBalance', {
+              amount: formatRwf(pending[0].total),
+              dueDate: formatDate(pending[0].dueDate),
+            })}`);
           }
           case '2':
-            return res.json({ response: `CON ${t(lang, 'enterAmount')}` });
+            return respond(res, `CON ${t(lang, 'enterAmount')}`);
           case '3': {
             const businessId = user.activeBusinessId || user.businessId;
-            if (!businessId) return res.json({ response: `END ${t(lang, 'noBusiness')}` });
+            if (!businessId) return respond(res, `END ${t(lang, 'noBusiness')}`);
 
             const txns = await PaymentTransaction.find({ businessId })
               .sort({ createdAt: -1 }).limit(5);
 
-            if (!txns.length) return res.json({ response: `END ${t(lang, 'noTransactions')}` });
+            if (!txns.length) return respond(res, `END ${t(lang, 'noTransactions')}`);
 
             const list = txns.map((tx, i) =>
               `${i + 1}. RWF ${formatRwf(tx.amount)} - ${tx.status} - ${formatDate(tx.createdAt)}`
             ).join('\n');
 
-            return res.json({ response: `END ${t(lang, 'recentTx', { list })}` });
+            return respond(res, `END ${t(lang, 'recentTx', { list })}`);
           }
           case '4': {
             const businessId = user.activeBusinessId || user.businessId;
-            if (!businessId) return res.json({ response: `END ${t(lang, 'noBusiness')}` });
+            if (!businessId) return respond(res, `END ${t(lang, 'noBusiness')}`);
 
             const biz = await Business.findById(businessId);
-            if (!biz) return res.json({ response: `END ${t(lang, 'noBusiness')}` });
+            if (!biz) return respond(res, `END ${t(lang, 'noBusiness')}`);
 
             const location = [biz.address?.sector, biz.address?.district, biz.address?.province].filter(Boolean).join(', ');
 
-            return res.json({
-              response: `END ${t(lang, 'businessStatus', {
-                name: biz.name,
-                status: biz.status,
-                tin: biz.taxIdentificationNumber || biz.registrationNumber || 'N/A',
-                location: location || 'N/A',
-              })}`,
-            });
+            return respond(res, `END ${t(lang, 'businessStatus', {
+              name: biz.name,
+              status: biz.status,
+              tin: biz.taxIdentificationNumber || biz.registrationNumber || 'N/A',
+              location: location || 'N/A',
+            })}`);
           }
           case '5':
-            return res.json({ response: `CON ${t(lang, 'langSelect')}` });
+            return respond(res, `CON ${t(lang, 'langSelect')}`);
           default:
-            return res.json({ response: `END ${t(lang, 'invalidOption')}` });
+            return respond(res, `END ${t(lang, 'invalidOption')}`);
         }
       }
       case 2: {
@@ -175,7 +173,7 @@ exports.handleUssd = async (req, res) => {
         if (prevInput === '2') {
           const amount = parseFloat(lastInput);
           if (isNaN(amount) || amount <= 0) {
-            return res.json({ response: `END ${t(lang, 'invalidAmount')}` });
+            return respond(res, `END ${t(lang, 'invalidAmount')}`);
           }
 
           const businessId = user.activeBusinessId || user.businessId;
@@ -189,30 +187,26 @@ exports.handleUssd = async (req, res) => {
             metadata: { sessionId, serviceCode, phoneNumber },
           });
 
-          return res.json({
-            response: `END ${t(lang, 'paymentInitiated', { amount: formatRwf(amount) })}`,
-          });
+          return respond(res, `END ${t(lang, 'paymentInitiated', { amount: formatRwf(amount) })}`);
         }
         if (prevInput === '5') {
           const langMap = { '1': 'en', '2': 'rw', '3': 'fr' };
           const langLabels = { '1': 'English', '2': 'Kinyarwanda', '3': 'Français' };
           const newLang = langMap[lastInput];
-          if (!newLang) return res.json({ response: `END ${t(lang, 'invalidOption')}` });
+          if (!newLang) return respond(res, `END ${t(lang, 'invalidOption')}`);
 
           user.preferredLanguage = newLang;
           await user.save();
 
-          return res.json({
-            response: `END ${t(newLang, 'langChanged')}`,
-          });
+          return respond(res, `END ${t(newLang, 'langChanged')}`);
         }
-        return res.json({ response: `END ${t(lang, 'invalidOption')}` });
+        return respond(res, `END ${t(lang, 'invalidOption')}`);
       }
       default:
-        return res.json({ response: `END ${t(lang, 'invalidOption')}` });
+        return respond(res, `END ${t(lang, 'invalidOption')}`);
     }
   } catch (error) {
     console.error('USSD error:', error);
-    return res.json({ response: 'END An error occurred. Please try again later.' });
+    return respond(res, 'END An error occurred. Please try again later.');
   }
 };

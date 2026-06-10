@@ -169,6 +169,13 @@ try {
 }
 startSchedulers();
 
+// Keep Render free tier awake (self-ping every 10 min)
+const http = require('http');
+setInterval(() => {
+  const req = http.get(`http://localhost:${process.env.PORT || 5000}/api/test`, () => {});
+  req.on('error', () => {});
+}, 10 * 60 * 1000);
+
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
