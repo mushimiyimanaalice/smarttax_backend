@@ -220,16 +220,10 @@ exports.handleUssd = async (req, res) => {
       return respond(res, 'END Invalid phone number.');
     }
 
-    // Normalize phone: try matching with/without country code +250, with/without leading 0
+    // Match last 9 digits regardless of prefix (handles 0788..., 250..., +250..., etc.)
     const last9 = phone.slice(-9);
-    const patterns = [
-      last9,                              // 788000001
-      '0' + last9,                        // 0788000001
-      '250' + last9,                      // 250788000001
-      '+' + '250' + last9,                // +250788000001
-    ];
     const user = await User.findOne({
-      phoneNumber: { $in: patterns },
+      phoneNumber: { $regex: last9 + '$' },
     });
 
     if (!user) {
